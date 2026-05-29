@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provincia de Loja - Google Maps</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f4f8;}
+        h2 { text-align: center; color: #333; margin: 15px 0 5px 0; }
+        p.subtitle { text-align: center; color: #666; margin-top: 0; margin-bottom: 15px; font-size: 0.9em; }
+        /* El contenedor del mapa debe tener una altura definida para que Google Maps se visualice */
+        #map { height: 85vh; width: 95%; margin: 0 auto; border: 2px solid #ccc; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+    <h2>Contorno de la Provincia de Loja (Google Maps)</h2>
+    <p class="subtitle" id="status">Cargando mapa y obteniendo límites reales...</p>
+    
+    <div id="map"></div>
+
+    <script>
+        let map;
+        let infoWindow;
+
+        // Esta función es llamada automáticamente por Google Maps cuando la librería carga
+        function initMap() {
+            // 1. Inicializar el mapa centrado en la provincia
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 8,
+                center: { lat: -4.0, lng: -79.2 },
+                mapTypeId: 'roadmap' // <-- Cambiado de 'terrain' a 'roadmap'
+            });
+
+            infoWindow = new google.maps.InfoWindow();
+
+            // 2. Obtener las coordenadas reales de OpenStreetMap (Nominatim)
+            const url = 'https://nominatim.openstreetmap.org/search?state=Loja&country=Ecuador&polygon_geojson=1&format=json';
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if(data && data.length > 0) {
+                        const geojsonData = data[0].geojson;
+                        let coordinates = [];
+
+                        // 3. Extraer las coordenadas del GeoJSON
+                        if (geojsonData.type === "Polygon") {
+                            coordinates = geojsonData.coordinates[0];
+                        } else if (geojsonData.type === "MultiPolygon") {
+                            geojsonData.coordinates.forEach(poly => {
+                                coordinates = coordinates.concat(poly[0]);
+                            });
+                        }
+
+                        // Convertir del formato GeoJSON [lng, lat] al formato Google Maps {lat, lng}
+                        const polygonPaths = coordinates.map(coord => ({
+                            lat: coord[1],
+                            lng: coord[0]
+                        }));
+
+                        // 4. Dibujar el polígono de la provincia
+                        const lojaPolygon = new google.maps.Polygon({
+                            paths: polygonPaths,
+                            strokeColor: "#c62828", // Borde rojo oscuro
+                            strokeOpacity: 1.0,
+                            strokeWeight: 3,
+                            fillColor: "#ff0000",   // Relleno rojo translúcido (Google no soporta rayas nativamente)
+                            fillOpacity: 0.25
+                        });
+
+                        lojaPolygon.setMap(map);
+
+                        // Crear un "Bounding Box" para centrar la cámara automáticamente
+                        const bounds = new google.maps.LatLngBounds();
+                        polygonPaths.forEach(path => bounds.extend(path));
+                        map.fitBounds(bounds);
+
+                        // 5. Dibujar puntos (círculos) interactivos en el contorno
+                        // Tomamos un punto cada 40 coordenadas para no saturar el mapa
+                        const paso = Math.max(1, Math.floor(polygonPaths.length / 150)); 
+
+                        for (let i = 0; i < polygonPaths.length; i += paso) {
+                            const posicion = polygonPaths[i];
+
+                            const markerCircle = new google.maps.Circle({
+                                strokeColor: "#900000",
+                                strokeOpacity: 1.0,
+                                strokeWeight: 1,
+                                fillColor: "#ff0000",
+                                fillOpacity: 1,
+                                map: map,
+                                center: posicion,
+                                radius: 1500 // Radio en metros (ajustar según zoom)
+                            });
+
+                            // Evento click para mostrar la información del punto
+                            markerCircle.addListener("click", (e) => {
+                                infoWindow.setContent(
+                                    `<div style="text-align:center; color:#333;">
+                                        <b>Límite Loja</b><br>
+                                        Lat: ${posicion.lat.toFixed(4)}<br>
+                                        Lng: ${posicion.lng.toFixed(4)}
+                                    </div>`
+                                );
+                                infoWindow.setPosition(e.latLng);
+                                infoWindow.open(map);
+                            });
+                        }
+
+                        document.getElementById('status').innerText = "Mapa cargado con éxito. Haz clic en los puntos del contorno.";
+                    } else {
+                        document.getElementById('status').innerText = "Error: No se pudo obtener la geometría.";
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    document.getElementById('status').innerText = "Hubo un error al obtener las coordenadas.";
+                });
+        }
+    </script>
+
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAi8_inXDTVFjYt5C8JI0PcvlOELH1GYC4&callback=initMap"></script>
+</body>
+</html>
